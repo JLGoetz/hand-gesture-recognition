@@ -91,10 +91,23 @@ while cap.isOpened():
 
             # 3. Draw text based on smoothed status
             if status is not None:
+                # Pattern Logic
+                # status = [thumb, index, middle, ring, pinky]
+                
                 if all(status):
-                    cv2.putText(frame, "HAND OPEN", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                    text = "HAND OPEN"
                 elif not any(status):
-                    cv2.putText(frame, "FIST", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+                    text = "FIST"
+                elif status[1] and status[2] and not status[0] and not status[3] and not status[4]:
+                    text = "PEACE SIGN"
+                elif status[0] and not status[1] and not status[2] and not status[3] and not status[4]:
+                    text = "THUMBS UP"
+                elif status[1] and status[4] and not status[2] and not status[3]:
+                    text = "ROCK ON"
+                else:
+                    text = "" # No recognized shape
+
+                cv2.putText(frame, text, (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 0), 2)
 
     cv2.imshow('Hand Tracker', frame)
     if cv2.waitKey(1) & 0xFF == ord('q'):
