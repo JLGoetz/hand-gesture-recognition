@@ -6,13 +6,14 @@ from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 from sklearn.neighbors import KNeighborsClassifier
 from collections import deque
+import os
 
 
 # --- 1. ML CLASSIFIER ---
 class MLGestureClassifier:
     def __init__(self, threshold=0.7, buffer_size=5):
         self.model = KNeighborsClassifier(n_neighbors=3)
-        self.is_trained = False
+        self.is_trained = True
         self.threshold = threshold # Confidence limit
         self.buffer_size = buffer_size
         # Store a buffer of recent results for each hand
@@ -90,7 +91,27 @@ base_options = python.BaseOptions(model_asset_path=MODEL_PATH)
 options = vision.HandLandmarkerOptions(base_options=base_options, num_hands=2)
 detector = vision.HandLandmarker.create_from_options(options)
 
+# Initialize and load data
 ml_classifier = MLGestureClassifier()
+DATA_FILE = os.path.join('training', 'training_data.npy')
+
+if os.path.exists(DATA_FILE):
+    data = np.load(DATA_FILE, allow_pickle=True).item()
+    
+    # Flatten the data for Scikit-Learn
+    X = []
+    y = []
+    for label, samples in data.items():
+        for sample in samples:
+            X.append(sample)
+            y.append(label)
+    
+    # Train the model
+    ml_classifier.train(np.array(X), np.array(y))
+    print(f"Model trained with {len(X)} samples!")
+else:
+    print("Warning: No training data found at", DATA_FILE)
+
 action_manager = ActionManager(debounce=0.7)
 
 cap = cv2.VideoCapture(0)

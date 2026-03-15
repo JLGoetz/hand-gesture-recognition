@@ -55,50 +55,61 @@ label = input("Enter gesture name (e.g., FIST, PEACE): ").upper()
 if label not in data: 
     data[label] = []
 
-# 4. Capture Loop with Visual Countdown
+# 4. Capture Loop with Continuation
 cap = cv2.VideoCapture(0)
 
-# Display a 5-second countdown on screen BEFORE capturing
-for i in range(5, 0, -1):
-    start_time = time.time()
-    while time.time() - start_time < 1:
+while True:
+    label = input("\nEnter gesture name (or 'q' to quit): ").upper()
+    if label == 'Q':
+        break
+        
+    if label not in data:
+        data[label] = []
+
+    # 5-second countdown loop
+    for i in range(5, 0, -1):
+        start_time = time.time()
+        while time.time() - start_time < 1:
+            success, frame = cap.read()
+            # Safety check included here to prevent crash
+            if not success or frame is None: continue 
+            
+            frame = cv2.flip(frame, 1)
+            cv2.putText(frame, f"Starting {label} in: {i}", (50, 240), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 255), 3)
+            cv2.imshow('Data Collector', frame)
+            cv2.waitKey(1)
+
+    print(f"Capturing 10 samples for '{label}'...")
+    count = 0
+    while count < 10:
         success, frame = cap.read()
+        if not success or frame is None: 
+            cv2.waitKey(100)
+            continue
+
         frame = cv2.flip(frame, 1)
-        # Display the countdown text
-        cv2.putText(frame, f"Starting in: {i}", (150, 240), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 255), 3)
+        cv2.putText(frame, f"Capturing {label}: {count+1}/10", (50, 50), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
         cv2.imshow('Data Collector', frame)
-        cv2.waitKey(1)
+        
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
+        result = detector.detect(mp_image)
+        
+        if result.hand_landmarks:
+            features = extract_robust_features(result.hand_landmarks[0])
+            data[label].append(features)
+            count += 1
+            cv2.waitKey(1000) 
+        
+        if cv2.waitKey(1) & 0xFF == ord('q'): break
+    
+    # Save after every gesture finished
+    np.save(DATA_FILE, data)
+    print(f"Saved. Total samples for '{label}': {len(data[label])}")
 
-print(f"Capturing 10 samples for '{label}'...")
-
-count = 0
-while count < 10:
-    success, frame = cap.read()
-    if not success: continue
-    
-    frame = cv2.flip(frame, 1)
-    # Visual feedback: Current progress
-    cv2.putText(frame, f"Capturing: {count+1}/10", (50, 50), 
-                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-    cv2.imshow('Data Collector', frame)
-    
-    # Process Frame
-    rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
-    result = detector.detect(mp_image)
-    
-    if result.hand_landmarks:
-        features = extract_robust_features(result.hand_landmarks[0])
-        data[label].append(features)
-        count += 1
-        cv2.waitKey(1000) # 1 second delay while holding the pose
-    
-    if cv2.waitKey(1) & 0xFF == ord('q'): break
-
+# Clean up
 cv2.destroyAllWindows()
-
-# 5. Save Data
-np.save(DATA_FILE, data)
-print(f"\nSuccess! Total samples for '{label}': {len(data[label])}")
 cap.release()
+print("Collector closed.")
