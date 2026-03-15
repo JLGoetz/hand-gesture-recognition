@@ -1,5 +1,6 @@
 import cv2
 import os
+import math 
 import mediapipe as mp
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
@@ -15,7 +16,7 @@ detector = vision.HandLandmarker.create_from_options(options)
 
 #buffer for smoothing
 class GestureManager:
-    def __init__(self, size=15):
+    def __init__(self, size=7):
         self.size = size
         # Stores buffers as: {'Left': deque(...), 'Right': deque(...)}
         self.buffers = {}
@@ -44,35 +45,52 @@ class GestureManager:
     
 # 3. Finger Logic Function
 def get_finger_status(hand_landmarks):
-    """
-    Returns a list of 5 booleans [thumb, index, middle, ring, pinky]
-    True = finger is extended (up), False = finger is folded (down)
-    """
-    # Landmark indices for Tips [4, 8, 12, 16, 20] and PIP/IP joints [3, 6, 10, 14, 18]
     tips = [4, 8, 12, 16, 20]
     pips = [3, 6, 10, 14, 18]
+    wrist = hand_landmarks[0]
     
+    def dist(p1, p2):
+        return math.sqrt((p1.x - p2.x)**2 + (p1.y - p2.y)**2)
+
     fingers = []
     
-    # Thumb (Checking x-coordinate relative to IP joint)
-    # Note: Logic depends on palm orientation
-    fingers.append(hand_landmarks[tips[0]].x > hand_landmarks[pips[0]].x)
+    # --- BETTER THUMB LOGIC ---
+    # Compare Thumb Tip to Pinky Base (17). 
+    # If the thumb is tucked in (Fist), it's close to the pinky base.
+    thumb_to_pinky_base = dist(hand_landmarks[4], hand_landmarks[17])
+    thumb_joint_to_pinky_base = dist(hand_landmarks[2], hand_landmarks[17])
     
-    # Other 4 fingers (Comparing y-coordinate)
+    # If Tip is further from pinky than the joint, it's extended
+    fingers.append(thumb_to_pinky_base > thumb_joint_to_pinky_base)
+
+    # --- OTHER 4 FINGERS ---
     for i in range(1, 5):
-        fingers.append(hand_landmarks[tips[i]].y < hand_landmarks[pips[i]].y)
+        tip_dist = dist(hand_landmarks[tips[i]], wrist)
+        pip_dist = dist(hand_landmarks[pips[i]], wrist)
+        fingers.append(tip_dist > pip_dist)
         
     return fingers
 
 # 3. a classify_gesture helper funciton for cleaner handleing of mulit-hand combinatins
 def classify_gesture(status):
-    if status is None: return "UNKNOWN"
-    # status = [thumb, index, middle, ring, pinky]
+    if not status: return ""
+    
+    # [thumb, index, middle, ring, pinky]
     if all(status): return "OPEN"
     if not any(status): return "FIST"
-    if status[1] and status[2] and not (status[0] or status[3] or status[4]): return "PEACE"
-    if status[0] and not any(status[1:]): return "THUMBS UP"
-    if status[1] and status[4] and not (status[2] or status[3]): return "ROCK ON"
+
+    # Peace: Index and Middle up, others down
+    if not status[0] and status[1] and status[2] and not status[3] and not status[4]:
+        return "PEACE"
+
+    # Thumbs Up: Only thumb up
+    if status[0] and not any(status[1:]):
+        return "THUMBS UP"
+        
+    # Rock On: Index and Pinky up
+    if status[1] and status[4] and not status[2] and not status[3]:
+        return "ROCK ON"
+        
     return "UNKNOWN"
 
 
