@@ -12,17 +12,31 @@ class MLGestureClassifier:
         self.model = KNeighborsClassifier(n_neighbors=3)
         self.is_trained = False
         
+    def extract_robust_features(self, hand_landmarks):
+        # Must match the logic in collector.py exactly!
+        wrist = hand_landmarks[0]
+        middle_tip = hand_landmarks[12]
+        
+        scale = np.sqrt((middle_tip.x - wrist.x)**2 + 
+                        (middle_tip.y - wrist.y)**2 + 
+                        (middle_tip.z - wrist.z)**2)
+        
+        if scale == 0: scale = 1.0
+        
+        features = []
+        for lm in hand_landmarks:
+            features.extend([(lm.x - wrist.x) / scale, 
+                             (lm.y - wrist.y) / scale, 
+                             (lm.z - wrist.z) / scale])
+        return features
+
     def train(self, X_train, y_train):
         self.model.fit(X_train, y_train)
         self.is_trained = True
 
     def classify(self, hand_landmarks):
         if not self.is_trained: return "UNTRAINED"
-        # Flatten and normalize features relative to the wrist (landmark 0)
-        wrist = hand_landmarks[0]
-        features = np.array([lm.x - wrist.x for lm in hand_landmarks] + 
-                            [lm.y - wrist.y for lm in hand_landmarks] + 
-                            [lm.z - wrist.z for lm in hand_landmarks]).reshape(1, -1)
+        features = np.array(self.extract_robust_features(hand_landmarks)).reshape(1, -1)
         return self.model.predict(features)[0]
 
 # --- 2. ACTION MANAGER ---
