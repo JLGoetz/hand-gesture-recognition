@@ -5,14 +5,20 @@ import mediapipe as mp
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 from sklearn.neighbors import KNeighborsClassifier
+from collections import deque
+
 
 # --- 1. ML CLASSIFIER ---
 class MLGestureClassifier:
-    def __init__(self, threshold=0.7):
+    def __init__(self, threshold=0.7, buffer_size=5):
         self.model = KNeighborsClassifier(n_neighbors=3)
         self.is_trained = False
         self.threshold = threshold # Confidence limit
-
+        self.buffer_size = buffer_size
+        # Store a buffer of recent results for each hand
+        self.prediction_buffers = {'Left': deque(maxlen=buffer_size), 
+                                   'Right': deque(maxlen=buffer_size)}
+        
     def extract_robust_features(self, hand_landmarks):
         # Must match the logic in collector.py exactly!
         wrist = hand_landmarks[0]
@@ -43,12 +49,21 @@ class MLGestureClassifier:
         # Get probabilities for all classes
         probs = self.model.predict_proba(features)[0]
         max_prob = np.max(probs)
+        gesture = self.model.classes_[np.argmax(probs)]
+
+        # Add to buffer
+        self.prediction_buffers[hand_label].append((gesture, max_prob))
         
-        # Check if the highest probability meets our threshold
-        if max_prob >= self.threshold:
-            return self.model.classes_[np.argmax(probs)]
-        else:
-            return "UNKNOWN (Low Confidence)"
+        # Calculate average confidence
+        avg_probs = {}
+        for g, p in self.prediction_buffers[hand_label]:
+            avg_probs[g] = avg_probs.get(g, 0) + (p / self.buffer_size)
+            
+        # Get the winner of the smoothed buffer
+        best_gesture = max(avg_probs, key=avg_probs.get)
+        best_confidence = avg_probs[best_gesture]
+        
+        return best_gesture if best_confidence >= self.threshold else "UNKNOWN"
 
 # --- 2. ACTION MANAGER ---
 class ActionManager:
@@ -97,7 +112,7 @@ while cap.isOpened():
             
             # Classify and Manage
             gesture = ml_classifier.classify(hand_landmarks)
-            
+
             if "UNKNOWN" in gesture:
                 # Optional: Display a neutral color or nothing at all
                 color = (128, 128, 128) 
