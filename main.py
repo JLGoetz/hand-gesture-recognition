@@ -96,6 +96,8 @@ while cap.isOpened():
             label = detection_result.handedness[i][0].category_name
             
             # Classify and Manage
+            gesture = ml_classifier.classify(hand_landmarks)
+            
             if "UNKNOWN" in gesture:
                 # Optional: Display a neutral color or nothing at all
                 color = (128, 128, 128) 
