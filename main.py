@@ -8,10 +8,11 @@ from sklearn.neighbors import KNeighborsClassifier
 
 # --- 1. ML CLASSIFIER ---
 class MLGestureClassifier:
-    def __init__(self):
+    def __init__(self, threshold=0.7):
         self.model = KNeighborsClassifier(n_neighbors=3)
         self.is_trained = False
-        
+        self.threshold = threshold # Confidence limit
+
     def extract_robust_features(self, hand_landmarks):
         # Must match the logic in collector.py exactly!
         wrist = hand_landmarks[0]
@@ -36,8 +37,18 @@ class MLGestureClassifier:
 
     def classify(self, hand_landmarks):
         if not self.is_trained: return "UNTRAINED"
+        
         features = np.array(self.extract_robust_features(hand_landmarks)).reshape(1, -1)
-        return self.model.predict(features)[0]
+        
+        # Get probabilities for all classes
+        probs = self.model.predict_proba(features)[0]
+        max_prob = np.max(probs)
+        
+        # Check if the highest probability meets our threshold
+        if max_prob >= self.threshold:
+            return self.model.classes_[np.argmax(probs)]
+        else:
+            return "UNKNOWN (Low Confidence)"
 
 # --- 2. ACTION MANAGER ---
 class ActionManager:
@@ -85,7 +96,17 @@ while cap.isOpened():
             label = detection_result.handedness[i][0].category_name
             
             # Classify and Manage
-            gesture = ml_classifier.classify(hand_landmarks)
+            if "UNKNOWN" in gesture:
+                # Optional: Display a neutral color or nothing at all
+                color = (128, 128, 128) 
+            else:
+                # Gesture is confident!
+                action = action_manager.process(label, gesture)
+                color = (0, 255, 0)
+                
+            cv2.putText(frame, f"{label}: {gesture}", (50, 50), 
+            cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
+
             action = action_manager.process(label, gesture)
             
             if action:
