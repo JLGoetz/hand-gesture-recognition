@@ -15,22 +15,22 @@ detector = vision.HandLandmarker.create_from_options(options)
 
 #buffer for smoothing
 class GestureBuffer:
-    def __init__(self, size=5):
+    def __init__(self, size=10):
         self.buffer = deque(maxlen=size)
         
     def add_gesture(self, status):
         self.buffer.append(status)
         
     def get_smoothed_status(self):
-        if len(self.buffer) < self.buffer.maxlen:
-            return None # Not enough data yet
+        # If empty, return None
+        if not self.buffer:
+            return None
         
-        # Determine the most frequent gesture in the buffer
-        # status is a list of 5 booleans [thumb, index, middle, ring, pinky]
-        # We average each finger across the last N frames
+        # Calculate current state based on data available (even if not full)
         avg_status = []
         for i in range(5):
             count_true = sum(1 for frame in self.buffer if frame[i])
+            # If > 50% of the frames in the buffer say "True", consider it True
             avg_status.append(count_true / len(self.buffer) > 0.5)
         return avg_status
     
@@ -79,15 +79,18 @@ while cap.isOpened():
 
     # Draw and Analyze
     if detection_result.hand_landmarks:
-        for hand_landmarks in detection_result.hand_landmarks:
-            # Get raw status
+       for hand_landmarks in detection_result.hand_landmarks:
+            h, w, _ = frame.shape
+            for lm in hand_landmarks:
+                cv2.circle(frame, (int(lm.x * w), int(lm.y * h)), 5, (255, 0, 0), -1)
+
+            # 2. SEPARATE logic (smoothing)
             raw_status = get_finger_status(hand_landmarks)
             gesture_buffer.add_gesture(raw_status)
-            
-            # Get smoothed status
             status = gesture_buffer.get_smoothed_status()
-            
-            if status: # Only proceed if we have enough frames
+
+            # 3. Draw text based on smoothed status
+            if status is not None:
                 if all(status):
                     cv2.putText(frame, "HAND OPEN", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
                 elif not any(status):
