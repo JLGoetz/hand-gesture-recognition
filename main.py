@@ -3,6 +3,7 @@ import os
 import mediapipe as mp
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
+from collections import deque
 
 # 1. Configuration
 MODEL_PATH = os.path.join('tasks', 'hand_landmarker.task')
@@ -12,6 +13,27 @@ base_options = python.BaseOptions(model_asset_path=MODEL_PATH)
 options = vision.HandLandmarkerOptions(base_options=base_options, num_hands=1)
 detector = vision.HandLandmarker.create_from_options(options)
 
+#buffer for smoothing
+class GestureBuffer:
+    def __init__(self, size=5):
+        self.buffer = deque(maxlen=size)
+        
+    def add_gesture(self, status):
+        self.buffer.append(status)
+        
+    def get_smoothed_status(self):
+        if len(self.buffer) < self.buffer.maxlen:
+            return None # Not enough data yet
+        
+        # Determine the most frequent gesture in the buffer
+        # status is a list of 5 booleans [thumb, index, middle, ring, pinky]
+        # We average each finger across the last N frames
+        avg_status = []
+        for i in range(5):
+            count_true = sum(1 for frame in self.buffer if frame[i])
+            avg_status.append(count_true / len(self.buffer) > 0.5)
+        return avg_status
+    
 # 3. Finger Logic Function
 def get_finger_status(hand_landmarks):
     """
@@ -39,6 +61,9 @@ def get_finger_status(hand_landmarks):
 # 4. Main Camera Loop
 cap = cv2.VideoCapture(0)
 
+# Initialize buffer outside the loop
+gesture_buffer = GestureBuffer(size=10)
+
 while cap.isOpened():
     success, frame = cap.read()
     if not success:
@@ -55,18 +80,18 @@ while cap.isOpened():
     # Draw and Analyze
     if detection_result.hand_landmarks:
         for hand_landmarks in detection_result.hand_landmarks:
-            # Draw Landmarks
-            h, w, _ = frame.shape
-            for lm in hand_landmarks:
-                cv2.circle(frame, (int(lm.x * w), int(lm.y * h)), 5, (255, 0, 0), -1)
+            # Get raw status
+            raw_status = get_finger_status(hand_landmarks)
+            gesture_buffer.add_gesture(raw_status)
             
-            # Logic Analysis
-            status = get_finger_status(hand_landmarks)
+            # Get smoothed status
+            status = gesture_buffer.get_smoothed_status()
             
-            if all(status):
-                cv2.putText(frame, "HAND OPEN", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-            elif not any(status):
-                cv2.putText(frame, "FIST", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+            if status: # Only proceed if we have enough frames
+                if all(status):
+                    cv2.putText(frame, "HAND OPEN", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                elif not any(status):
+                    cv2.putText(frame, "FIST", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
 
     cv2.imshow('Hand Tracker', frame)
     if cv2.waitKey(1) & 0xFF == ord('q'):
