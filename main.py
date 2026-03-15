@@ -41,7 +41,7 @@ class MLGestureClassifier:
         self.model.fit(X_train, y_train)
         self.is_trained = True
 
-    def classify(self, hand_landmarks):
+    def classify(self, hand_landmarks, hand_label):
         if not self.is_trained: return "UNTRAINED"
         
         features = np.array(self.extract_robust_features(hand_landmarks)).reshape(1, -1)
@@ -101,40 +101,46 @@ while cap.isOpened():
     if not success: continue
     
     frame = cv2.flip(frame, 1)
+    
+    # 1. Always initialize overlay at the start of the frame loop
+    overlay = frame.copy() 
+    
+    # Process image for MediaPipe
     rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
     
     detection_result = detector.detect(mp_image)
     
     if detection_result.hand_landmarks:
+        y_offset = 50
+        
+        # 2. Iterate through all detected hands
         for i, hand_landmarks in enumerate(detection_result.hand_landmarks):
             label = detection_result.handedness[i][0].category_name
             
-            # Classify and Manage
-            gesture = ml_classifier.classify(hand_landmarks)
-
-            if "UNKNOWN" in gesture:
-                # Optional: Display a neutral color or nothing at all
-                color = (128, 128, 128) 
-            else:
-                # Gesture is confident!
+            # Classify
+            gesture = ml_classifier.classify(hand_landmarks, label)
+            
+            # Determine UI Color
+            color = (128, 128, 128) if "UNKNOWN" in gesture else (0, 255, 0)
+            
+            # Process Action
+            if "UNKNOWN" not in gesture:
                 action = action_manager.process(label, gesture)
-                color = (0, 255, 0)
-                
-            cv2.putText(frame, f"{label}: {gesture}", (50, 50), 
-            cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
-
-            action = action_manager.process(label, gesture)
+                if action:
+                    print(f"Triggered: {action}")
             
-            if action:
-                print(f"Triggered: {action}")
+            # 3. Draw UI (Rectangle on overlay, Text on frame)
+            cv2.rectangle(overlay, (40, y_offset - 35), (380, y_offset + 15), (0, 0, 0), -1)
+            cv2.putText(frame, f"{label}: {gesture}", (50, y_offset), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
             
-            # UI Feedback
-            cv2.putText(frame, f"{label}: {gesture}", (50, 50 + (i*50)), 
-                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+            y_offset += 50
+    
+    # 4. Blend the overlay with the frame (outside the if-block)
+    cv2.addWeighted(overlay, 0.4, frame, 0.6, 0, frame)
 
     cv2.imshow('Hand Tracker', frame)
     if cv2.waitKey(1) & 0xFF == ord('q'): break
-
 cap.release()
 cv2.destroyAllWindows()
