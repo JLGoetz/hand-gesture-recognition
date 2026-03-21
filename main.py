@@ -117,54 +117,54 @@ action_manager = ActionManager(debounce=0.7)
 cap = cv2.VideoCapture(0)
 
 # --- 4. MAIN LOOP ---
+# --- 4. MAIN LOOP ---
 while cap.isOpened():
     success, frame = cap.read()
     if not success: continue
     
+    # Flip for "Mirror" view
     frame = cv2.flip(frame, 1)
     
-    # 1. Always initialize overlay at the start of the frame loop
-    overlay = frame.copy() 
-    
-    # Process image for MediaPipe
     rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
     
+    # Use the synchronous detect call
     detection_result = detector.detect(mp_image)
     
+    # Create a clean overlay for this frame
+    overlay = frame.copy()
+    y_offset = 50
+
     if detection_result.hand_landmarks:
-        y_offset = 50
-        
-        # 2. Iterate through all detected hands
         for i, hand_landmarks in enumerate(detection_result.hand_landmarks):
-            label = detection_result.handedness[i][0].category_name
-            
-            # Swap the label because we used cv2.flip(frame, 1)
+            # 1. FIX HANDEDNESS: Swap labels because of the cv2.flip
+            raw_label = detection_result.handedness[i][0].category_name
             label = "Left" if raw_label == "Right" else "Right"
             
-            # Classify
+            # 2. Classify using the corrected label
             gesture = ml_classifier.classify(hand_landmarks, label)
             
-            # Determine UI Color
-            color = (128, 128, 128) if "UNKNOWN" in gesture else (0, 255, 0)
+            # 3. UI Logic
+            color = (128, 128, 128) if gesture == "UNKNOWN" else (0, 255, 0)
             
             # Process Action
-            if "UNKNOWN" not in gesture:
+            if gesture != "UNKNOWN":
                 action = action_manager.process(label, gesture)
                 if action:
                     print(f"Triggered: {action}")
             
-            # 3. Draw UI (Rectangle on overlay, Text on frame)
-            cv2.rectangle(overlay, (40, y_offset - 35), (380, y_offset + 15), (0, 0, 0), -1)
+            # Draw UI
+            cv2.rectangle(overlay, (40, y_offset - 35), (420, y_offset + 15), (0, 0, 0), -1)
             cv2.putText(frame, f"{label}: {gesture}", (50, y_offset), 
                         cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
             
-            y_offset += 50
-    
-    # 4. Blend the overlay with the frame (outside the if-block)
+            y_offset += 60 
+
+    # 4. Blend the overlay
     cv2.addWeighted(overlay, 0.4, frame, 0.6, 0, frame)
 
     cv2.imshow('Hand Tracker', frame)
     if cv2.waitKey(1) & 0xFF == ord('q'): break
+
 cap.release()
 cv2.destroyAllWindows()
