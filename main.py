@@ -7,7 +7,8 @@ from mediapipe.tasks.python import vision
 from sklearn.neighbors import KNeighborsClassifier
 from collections import deque
 import os
-
+import socket
+import json
 
 # --- 1. ML CLASSIFIER ---
 class MLGestureClassifier:
@@ -116,7 +117,11 @@ action_manager = ActionManager(debounce=0.7)
 
 cap = cv2.VideoCapture(0)
 
-# --- 4. MAIN LOOP ---
+# Setup Socket
+sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+server_address = ('127.0.0.1', 5005) # Localhost and a random port
+
+
 # --- 4. MAIN LOOP ---
 while cap.isOpened():
     success, frame = cap.read()
@@ -152,6 +157,8 @@ while cap.isOpened():
                 action = action_manager.process(label, gesture)
                 if action:
                     print(f"Triggered: {action}")
+                    message = json.dumps({"hand": label, "action": action, "timestamp": time.time()})
+                    sock.sendto(message.encode(), server_address)
             
             # Draw UI
             cv2.rectangle(overlay, (40, y_offset - 35), (420, y_offset + 15), (0, 0, 0), -1)
@@ -159,6 +166,8 @@ while cap.isOpened():
                         cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
             
             y_offset += 60 
+                
+
 
     # 4. Blend the overlay
     cv2.addWeighted(overlay, 0.4, frame, 0.6, 0, frame)
