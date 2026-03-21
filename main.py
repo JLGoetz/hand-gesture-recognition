@@ -139,6 +139,9 @@ while cap.isOpened():
         for i, hand_landmarks in enumerate(detection_result.hand_landmarks):
             label = detection_result.handedness[i][0].category_name
             
+            # Swap the label because we used cv2.flip(frame, 1)
+            label = "Left" if raw_label == "Right" else "Right"
+            
             # Classify
             gesture = ml_classifier.classify(hand_landmarks, label)
             
