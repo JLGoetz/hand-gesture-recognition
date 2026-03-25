@@ -117,10 +117,10 @@ action_manager = ActionManager(debounce=0.7)
 
 cap = cv2.VideoCapture(0)
 
-# Setup Socket
+# --- INIT UDP SENDER ---
+UDP_IP = "127.0.0.1"  # '127.0.0.1' means this same computer
+UDP_PORT = 5005
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-server_address = ('127.0.0.1', 5005) # Localhost and a random port
-
 
 # --- 4. MAIN LOOP ---
 while cap.isOpened():
@@ -157,8 +157,15 @@ while cap.isOpened():
                 action = action_manager.process(label, gesture)
                 if action:
                     print(f"Triggered: {action}")
-                    message = json.dumps({"hand": label, "action": action, "timestamp": time.time()})
-                    sock.sendto(message.encode(), server_address)
+                    # NEW: Create the message and send it
+                    message = {
+                        "hand": label,
+                        "gesture": gesture,
+                        "action": action,
+                        "time": time.time()
+                    }
+                    packet = json.dumps(message).encode('utf-8')
+                    sock.sendto(packet, (UDP_IP, UDP_PORT))
             
             # Draw UI
             cv2.rectangle(overlay, (40, y_offset - 35), (420, y_offset + 15), (0, 0, 0), -1)
